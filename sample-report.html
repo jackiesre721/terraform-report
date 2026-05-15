@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terraform Report</title>
+<style>
+:root {
+    --bg: #1e1e2e;
+    --surface: #313244;
+    --overlay: #45475a;
+    --text: #cdd6f4;
+    --subtext: #a6adc8;
+    --green: #a6e3a1;
+    --red: #f38ba8;
+    --yellow: #f9e2af;
+    --blue: #89b4fa;
+    --mauve: #cba6f7;
+    --teal: #94e2d5;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+    line-height: 1.5;
+    font-size: 13px;
+}
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--overlay);
+}
+.header h1 {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text);
+}
+.header .timestamp {
+    color: var(--subtext);
+    font-size: 12px;
+}
+.summary {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.stat {
+    padding: 12px 20px;
+    border-radius: 8px;
+    background: var(--surface);
+    border: 1px solid var(--overlay);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.stat .count {
+    font-size: 24px;
+    font-weight: 700;
+}
+.stat .label {
+    color: var(--subtext);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.stat.add .count { color: var(--green); }
+.stat.change .count { color: var(--yellow); }
+.stat.destroy .count { color: var(--red); }
+.controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+.controls button {
+    background: var(--surface);
+    border: 1px solid var(--overlay);
+    color: var(--text);
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+    transition: background 0.15s;
+}
+.controls button:hover { background: var(--overlay); }
+.filter-buttons { display: flex; gap: 6px; margin-left: auto; }
+.filter-buttons button { font-size: 11px; padding: 4px 10px; }
+.filter-buttons button.active { border-color: var(--blue); color: var(--blue); }
+.resource {
+    margin-bottom: 8px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--overlay);
+    background: var(--surface);
+}
+.resource.hidden { display: none; }
+.resource-header {
+    padding: 12px 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    user-select: none;
+    transition: background 0.15s;
+}
+.resource-header:hover { background: var(--overlay); }
+.resource-header .chevron {
+    transition: transform 0.2s;
+    color: var(--subtext);
+    flex-shrink: 0;
+}
+.resource.open .resource-header .chevron { transform: rotate(90deg); }
+.resource-header .action-badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    flex-shrink: 0;
+}
+.action-badge.create { background: rgba(166,227,161,0.15); color: var(--green); }
+.action-badge.destroy { background: rgba(243,139,168,0.15); color: var(--red); }
+.action-badge.update { background: rgba(249,226,175,0.15); color: var(--yellow); }
+.action-badge.replace { background: rgba(203,166,247,0.15); color: var(--mauve); }
+.action-badge.read { background: rgba(137,180,250,0.15); color: var(--blue); }
+.resource-header .resource-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.resource-header .resource-name .module {
+    color: var(--subtext);
+}
+.resource-body {
+    display: none;
+    padding: 0 16px 16px;
+    overflow-x: auto;
+}
+.resource.open .resource-body { display: block; }
+.diff {
+    background: var(--bg);
+    border-radius: 6px;
+    padding: 12px 16px;
+    overflow-x: auto;
+    font-size: 12px;
+    line-height: 1.7;
+}
+.diff .line { white-space: pre; }
+.diff .line.add { color: var(--green); }
+.diff .line.remove { color: var(--red); }
+.diff .line.change { color: var(--yellow); }
+.diff .line.comment { color: var(--subtext); font-style: italic; }
+.diff .line.forces { color: var(--mauve); }
+.progress-section {
+    margin-top: 24px;
+    border-top: 1px solid var(--overlay);
+    padding-top: 16px;
+}
+.progress-section h2 {
+    font-size: 14px;
+    margin-bottom: 12px;
+    color: var(--subtext);
+}
+.progress-item {
+    padding: 6px 0;
+    font-size: 12px;
+}
+.progress-item.complete { color: var(--green); }
+.progress-item.in-progress { color: var(--yellow); }
+.progress-item.error { color: var(--red); }
+.search-box {
+    padding: 8px 14px;
+    background: var(--bg);
+    border: 1px solid var(--overlay);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 12px;
+    font-family: inherit;
+    width: 260px;
+}
+.search-box:focus { outline: none; border-color: var(--blue); }
+.outputs-section {
+    margin-top: 24px;
+    border-top: 1px solid var(--overlay);
+    padding-top: 16px;
+}
+.outputs-section h2 {
+    font-size: 14px;
+    margin-bottom: 12px;
+    color: var(--subtext);
+}
+</style>
+</head>
+<body>
+<div class="header">
+    <h1>Terraform Report</h1>
+    <span class="timestamp">2026-05-15 13:34:00</span>
+</div>
+<div class="summary">
+    <div class="stat add"><span class="count">3</span><span class="label">Add</span></div>
+    <div class="stat change"><span class="count">1</span><span class="label">Change</span></div>
+    <div class="stat destroy"><span class="count">2</span><span class="label">Destroy</span></div>
+</div>
+<div class="controls">
+    <button onclick="expandAll()">Expand All</button>
+    <button onclick="collapseAll()">Collapse All</button>
+    <input type="text" class="search-box" placeholder="Filter resources..." oninput="filterResources(this.value)">
+    <div class="filter-buttons">
+        <button class="active" data-filter="all" onclick="filterByAction('all', this)">All</button>
+        <button data-filter="create" onclick="filterByAction('create', this)">+ Add</button>
+        <button data-filter="update" onclick="filterByAction('update', this)">~ Change</button>
+        <button data-filter="destroy" onclick="filterByAction('destroy', this)">- Destroy</button>
+        <button data-filter="replace" onclick="filterByAction('replace', this)">+/- Replace</button>
+    </div>
+</div>
+<div id="resources">
+<div class="resource" data-action="create" data-name="aws_instance.web">
+  <div class="resource-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="chevron">&#9654;</span>
+    <span class="action-badge create">create</span>
+    <span class="resource-name">aws_instance.web</span>
+  </div>
+  <div class="resource-body"><div class="diff">
+<div class="line add">  + resource &quot;aws_instance&quot; &quot;web&quot; {</div>
+<div class="line add">      + ami                          = &quot;ami-0c55b159cbfafe1f0&quot;</div>
+<div class="line add">      + arn                          = (known after apply)</div>
+<div class="line add">      + instance_type                = &quot;t3.medium&quot;</div>
+<div class="line add">      + key_name                     = &quot;deploy-key&quot;</div>
+<div class="line add">      + subnet_id                    = &quot;subnet-0bb1c79de3EXAMPLE&quot;</div>
+<div class="line add">      + vpc_security_group_ids       = [</div>
+<div class="line add">          + &quot;sg-0a1b2c3d4e5f67890&quot;,</div>
+<div class="line">        ]</div>
+<div class="line add">      + tags                         = {</div>
+<div class="line add">          + &quot;Environment&quot; = &quot;production&quot;</div>
+<div class="line add">          + &quot;Name&quot;        = &quot;web-server&quot;</div>
+<div class="line add">          + &quot;Team&quot;        = &quot;platform&quot;</div>
+<div class="line">        }</div>
+<div class="line">    }</div>
+<div class="line"></div>
+</div></div></div>
+<div class="resource" data-action="create" data-name="aws_security_group.web">
+  <div class="resource-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="chevron">&#9654;</span>
+    <span class="action-badge create">create</span>
+    <span class="resource-name">aws_security_group.web</span>
+  </div>
+  <div class="resource-body"><div class="diff">
+<div class="line add">  + resource &quot;aws_security_group&quot; &quot;web&quot; {</div>
+<div class="line add">      + name        = &quot;web-sg&quot;</div>
+<div class="line add">      + description = &quot;Security group for web servers&quot;</div>
+<div class="line add">      + vpc_id      = &quot;vpc-0a1b2c3d4eEXAMPLE&quot;</div>
+<div class="line"></div>
+<div class="line add">      + ingress {</div>
+<div class="line add">          + from_port   = 443</div>
+<div class="line add">          + to_port     = 443</div>
+<div class="line add">          + protocol    = &quot;tcp&quot;</div>
+<div class="line add">          + cidr_blocks = [&quot;0.0.0.0/0&quot;]</div>
+<div class="line">        }</div>
+<div class="line"></div>
+<div class="line add">      + ingress {</div>
+<div class="line add">          + from_port   = 80</div>
+<div class="line add">          + to_port     = 80</div>
+<div class="line add">          + protocol    = &quot;tcp&quot;</div>
+<div class="line add">          + cidr_blocks = [&quot;0.0.0.0/0&quot;]</div>
+<div class="line">        }</div>
+<div class="line"></div>
+<div class="line add">      + egress {</div>
+<div class="line add">          + from_port   = 0</div>
+<div class="line add">          + to_port     = 0</div>
+<div class="line add">          + protocol    = &quot;-1&quot;</div>
+<div class="line add">          + cidr_blocks = [&quot;0.0.0.0/0&quot;]</div>
+<div class="line">        }</div>
+<div class="line">    }</div>
+<div class="line"></div>
+</div></div></div>
+<div class="resource" data-action="update" data-name="module.database.aws_db_instance.main">
+  <div class="resource-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="chevron">&#9654;</span>
+    <span class="action-badge update">update</span>
+    <span class="resource-name"><span class="module">module.database.</span>aws_db_instance.main</span>
+  </div>
+  <div class="resource-body"><div class="diff">
+<div class="line change">  ~ resource &quot;aws_db_instance&quot; &quot;main&quot; {</div>
+<div class="line">        id                 = &quot;prod-db-01&quot;</div>
+<div class="line change">      ~ instance_class     = &quot;db.t3.medium&quot; -&gt; &quot;db.r5.large&quot;</div>
+<div class="line change">      ~ allocated_storage  = 100 -&gt; 200</div>
+<div class="line comment">        # (12 unchanged attributes hidden)</div>
+<div class="line">    }</div>
+<div class="line"></div>
+</div></div></div>
+<div class="resource" data-action="replace" data-name="aws_s3_bucket.logs">
+  <div class="resource-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="chevron">&#9654;</span>
+    <span class="action-badge replace">replace</span>
+    <span class="resource-name">aws_s3_bucket.logs</span>
+  </div>
+  <div class="resource-body"><div class="diff">
+<div class="line add">+/- resource &quot;aws_s3_bucket&quot; &quot;logs&quot; {</div>
+<div class="line forces">      ~ bucket             = &quot;myapp-logs-2024&quot; -&gt; &quot;myapp-logs-2025&quot; # forces replacement</div>
+<div class="line change">      ~ arn                = &quot;arn:aws:s3:::myapp-logs-2024&quot; -&gt; (known after apply)</div>
+<div class="line add">      + versioning {</div>
+<div class="line add">          + enabled = true</div>
+<div class="line">        }</div>
+<div class="line remove">      - lifecycle_rule {</div>
+<div class="line remove">          - enabled = true</div>
+<div class="line remove">          - expiration {</div>
+<div class="line remove">              - days = 90</div>
+<div class="line">            }</div>
+<div class="line">        }</div>
+<div class="line add">      + lifecycle_rule {</div>
+<div class="line add">          + enabled = true</div>
+<div class="line add">          + expiration {</div>
+<div class="line add">              + days = 365</div>
+<div class="line">            }</div>
+<div class="line">        }</div>
+<div class="line">    }</div>
+<div class="line"></div>
+</div></div></div>
+<div class="resource" data-action="destroy" data-name="aws_route53_record.old_api">
+  <div class="resource-header" onclick="this.parentElement.classList.toggle('open')">
+    <span class="chevron">&#9654;</span>
+    <span class="action-badge destroy">destroy</span>
+    <span class="resource-name">aws_route53_record.old_api</span>
+  </div>
+  <div class="resource-body"><div class="diff">
+<div class="line remove">  - resource &quot;aws_route53_record&quot; &quot;old_api&quot; {</div>
+<div class="line remove">      - name    = &quot;api-v1.example.com&quot;</div>
+<div class="line remove">      - type    = &quot;A&quot;</div>
+<div class="line remove">      - ttl     = 300</div>
+<div class="line remove">      - records = [</div>
+<div class="line remove">          - &quot;10.0.1.50&quot;,</div>
+<div class="line">        ]</div>
+<div class="line">    }</div>
+<div class="line"></div>
+</div></div></div>
+</div>
+<script>
+function expandAll() {
+    document.querySelectorAll('.resource:not(.hidden)').forEach(el => el.classList.add('open'));
+}
+function collapseAll() {
+    document.querySelectorAll('.resource').forEach(el => el.classList.remove('open'));
+}
+function filterResources(query) {
+    const q = query.toLowerCase();
+    document.querySelectorAll('.resource').forEach(el => {
+        const name = el.dataset.name.toLowerCase();
+        if (name.includes(q)) {
+            el.classList.remove('hidden');
+        } else {
+            el.classList.add('hidden');
+        }
+    });
+}
+function filterByAction(action, btn) {
+    document.querySelectorAll('.filter-buttons button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.resource').forEach(el => {
+        if (action === 'all' || el.dataset.action === action) {
+            el.classList.remove('hidden');
+        } else {
+            el.classList.add('hidden');
+        }
+    });
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'e' && !e.target.matches('input')) expandAll();
+    if (e.key === 'c' && !e.target.matches('input')) collapseAll();
+    if (e.key === '/' && !e.target.matches('input')) {
+        e.preventDefault();
+        document.querySelector('.search-box').focus();
+    }
+});
+</script>
+</body>
+</html>
