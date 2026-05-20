@@ -1,0 +1,6 @@
+interface:
+  display_name: "Terraform Report"
+  short_description: "Repo-specific patterns and workflows for terraform-report"
+  default_prompt: "Use the terraform-report repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true
