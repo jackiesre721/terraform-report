@@ -1,7 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-OUTPUT_FILE="${1:-/tmp/tf-report-$(date +%s).html}"
+CI_MODE=0
+OUTPUT_FILE=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --ci) CI_MODE=1; shift ;;
+        -h|--help)
+            echo "Usage: terraform plan | tf-report [--ci] [output.html]"
+            echo ""
+            echo "Options:"
+            echo "  --ci    CI mode: suppress auto-open, cleaner output"
+            echo "  -h      Show this help"
+            exit 0
+            ;;
+        -*)
+            echo "Unknown option: $1" >&2; exit 1 ;;
+        *)
+            if [ -z "$OUTPUT_FILE" ]; then
+                OUTPUT_FILE="$1"
+            else
+                echo "Unexpected argument: $1" >&2; exit 1
+            fi
+            shift ;;
+    esac
+done
+
+OUTPUT_FILE="${OUTPUT_FILE:-/tmp/tf-report-$(date +%s).html}"
 INPUT=$(cat | sed $'s/\033\[[0-9;]*m//g')
 
 if [ -z "$INPUT" ]; then
@@ -494,9 +520,13 @@ HTMLFOOT
 
 generate_html "$INPUT" > "$OUTPUT_FILE"
 
-echo "Report generated: ${OUTPUT_FILE}" >&2
-if command -v open &>/dev/null; then
-    open "$OUTPUT_FILE"
-elif command -v xdg-open &>/dev/null; then
-    xdg-open "$OUTPUT_FILE"
+if [ "$CI_MODE" -eq 1 ]; then
+    echo "report_path=${OUTPUT_FILE}" >&2
+else
+    echo "Report generated: ${OUTPUT_FILE}" >&2
+    if command -v open &>/dev/null; then
+        open "$OUTPUT_FILE"
+    elif command -v xdg-open &>/dev/null; then
+        xdg-open "$OUTPUT_FILE"
+    fi
 fi
