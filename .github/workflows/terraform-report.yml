@@ -1,0 +1,78 @@
+name: Terraform Report
+
+on:
+  pull_request:
+    paths:
+      - '**.tf'
+      - '**.tfvars'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: tf-report-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}pr-${{ github.event.pull_request.number }}/
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init -input=false
+
+      - name: Terraform Plan
+        run: terraform plan -input=false -no-color 2>&1 | tee plan-output.txt
+
+      - name: Generate HTML Report
+        run: |
+          mkdir -p report/pr-${{ github.event.pull_request.number }}
+          cat plan-output.txt | ./tf-report --ci report/pr-${{ github.event.pull_request.number }}/index.html
+
+      - name: Extract Summary
+        id: summary
+        run: |
+          SUMMARY=$(grep -E '^Plan:' plan-output.txt || echo "No plan summary")
+          ADD=$(echo "$SUMMARY" | grep -oE '[0-9]+ to add' | grep -oE '^[0-9]+' || echo "0")
+          CHANGE=$(echo "$SUMMARY" | grep -oE '[0-9]+ to change' | grep -oE '^[0-9]+' || echo "0")
+          DESTROY=$(echo "$SUMMARY" | grep -oE '[0-9]+ to destroy' | grep -oE '^[0-9]+' || echo "0")
+          echo "add=$ADD" >> "$GITHUB_OUTPUT"
+          echo "change=$CHANGE" >> "$GITHUB_OUTPUT"
+          echo "destroy=$DESTROY" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to GitHub Pages
+        id: pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./report
+          publish_branch: gh-pages
+          destination_dir: .
+          keep_files: true
+
+      - name: Comment on PR
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: tf-report
+          message: |
+            ## Terraform Plan Report
+
+            | Action | Count |
+            |--------|-------|
+            | ➕ Add | ${{ steps.summary.outputs.add }} |
+            | ✏️ Change | ${{ steps.summary.outputs.change }} |
+            | ❌ Destroy | ${{ steps.summary.outputs.destroy }} |
+
+            **Interactive Report:** https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/
+
+            _Report generated from commit \`${{ github.sha }}\`_
